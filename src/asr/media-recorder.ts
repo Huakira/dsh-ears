@@ -75,7 +75,7 @@ export function warmMicrophone(): void {
   })
 }
 
-async function acquireMicrophone(): Promise<MediaStream> {
+export async function acquireMicrophoneStream(): Promise<MediaStream> {
   if (warming !== undefined) {
     try {
       await warming
@@ -129,7 +129,7 @@ export class MediaRecorderSession {
 
   static async create(): Promise<MediaRecorderSession> {
     if (!isMediaRecorderAvailable()) throw new EarsError(EARS_ERROR_CODES.browserMediaUnavailable, 'Media recording is unavailable in this browser')
-    const stream = await acquireMicrophone()
+    const stream = await acquireMicrophoneStream()
     try {
       const mimeType = supportedMimeType()
       const recorder = mimeType === '' ? new MediaRecorder(stream) : new MediaRecorder(stream, { mimeType })

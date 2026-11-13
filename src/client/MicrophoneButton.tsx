@@ -388,17 +388,32 @@ export function MicrophoneButton({ useInput, inputActions, remote, useEarsSettin
     const generation = ++mediaStartGenerationRef.current
     mediaStartCancelledRef.current = false
     setState('starting')
+    // The user starts speaking the moment the button is clicked, so acquire the
+    // microphone first and buffer its audio while the remote session
+    // handshakes in parallel. The buffered leading audio is flushed into the
+    // stream when the session is ready, so no spoken word is ever lost to the
+    // handshake delay.
+    const capturePromise = RealtimeAudioCaptureSession.create()
+    void capturePromise.then((session) => {
+      try {
+        session.startBuffered()
+      } catch {
+        // The capture was already superseded or aborted.
+      }
+    }, () => undefined)
     let capture: RealtimeAudioCaptureSession | undefined
     let sessionId: string | undefined
     try {
       const started = await remote.startRealtime(startController.signal)
       if (!started.ok) throw started.error
       if (!mountedRef.current || startController.signal.aborted || realtimeStartAbortRef.current !== startController) {
+        const pending = await capturePromise.catch(() => undefined)
+        pending?.abort()
         await remote.cancelRealtime(started.value.sessionId)
         return
       }
       sessionId = started.value.sessionId
-      capture = await RealtimeAudioCaptureSession.create()
+      capture = await capturePromise
       if (!mountedRef.current || startController.signal.aborted || realtimeStartAbortRef.current !== startController || isSupersededMediaCapture(mediaStartGenerationRef.current, generation) || shouldAbandonPendingCapture(mountedRef.current, mediaStartCancelledRef.current)) {
         capture.abort()
         await remote.cancelRealtime(sessionId)
@@ -431,6 +446,10 @@ export function MicrophoneButton({ useInput, inputActions, remote, useEarsSettin
       realtimeStartAbortRef.current = null
     } catch (error) {
       capture?.abort()
+      if (capture === undefined) {
+        const pending = await capturePromise.catch(() => undefined)
+        pending?.abort()
+      }
       if (sessionId !== undefined) await remote.cancelRealtime(sessionId)
       if (realtimeCaptureRef.current === capture) realtimeCaptureRef.current = null
       if (realtimeRemoteSessionIdRef.current === sessionId) realtimeRemoteSessionIdRef.current = null

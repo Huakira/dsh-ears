@@ -1,4 +1,5 @@
-import { AudioLevelMonitor, VOICE_AUDIO_CONSTRAINTS } from '../asr/audio-level.js'
+import { AudioLevelMonitor } from '../asr/audio-level.js'
+import { acquireMicrophoneStream } from '../asr/media-recorder.js'
 import { audioToPcm16Wav } from '../asr/pcm-wav.js'
 
 const TARGET_SAMPLE_RATE = 16_000
@@ -6,6 +7,10 @@ const BUFFER_SIZE = 1024
 const REALTIME_AUDIO_CHUNK_SAMPLES = TARGET_SAMPLE_RATE / 25
 const REALTIME_AUDIO_CHUNK_BYTES = REALTIME_AUDIO_CHUNK_SAMPLES * 2
 const REALTIME_CHUNK_DELIVERY_TIMEOUT_MS = 5_000
+// Hygiene bound for buffered leading audio: 1_500 chunks of 40 ms is one minute
+// of speech. The start handshake aborts long before this in practice, so the
+// cap only guards against a pathologically stuck session leaking memory.
+const MAX_BUFFERED_CHUNKS = 1_500
 
 export function isRealtimeAudioCaptureAvailable(): boolean {
   if (typeof navigator === 'undefined' || typeof navigator.mediaDevices?.getUserMedia !== 'function') return false
@@ -16,6 +21,7 @@ export function isRealtimeAudioCaptureAvailable(): boolean {
 
 export interface RealtimeAudioCapture {
   createLevelMonitor(onLevel: (level: number) => void): AudioLevelMonitor
+  startBuffered(): void
   start(onChunk: (audioBase64: string) => Promise<void>): void
   stop(): Promise<void>
   abort(): void
@@ -31,6 +37,9 @@ export class RealtimeAudioCaptureSession implements RealtimeAudioCapture {
   private readonly sink: GainNode
   private queue = Promise.resolve()
   private onChunk: ((audioBase64: string) => Promise<void>) | undefined
+  private bufferedChunks: string[] = []
+  private buffering = false
+  private bufferingOverflow = false
   private pendingPcm = new Uint8Array()
   private resamplePhase = 0
   private deliveryGeneration = 0
@@ -48,18 +57,23 @@ export class RealtimeAudioCaptureSession implements RealtimeAudioCapture {
     this.processor.connect(this.sink)
     this.sink.connect(context.destination)
     this.processor.onaudioprocess = (event) => {
-      if (this.closed || this.onChunk === undefined) return
+      if (this.closed) return
       const samples = event.inputBuffer.getChannelData(0)
       const resampled = resampleToPcm16(samples, event.inputBuffer.sampleRate, this.resamplePhase)
       this.resamplePhase = resampled.phase
       if (resampled.pcm.byteLength === 0) return
-      this.enqueuePcm(this.onChunk, resampled.pcm)
+      if (this.onChunk !== undefined) {
+        this.enqueuePcm(this.onChunk, resampled.pcm)
+        return
+      }
+      if (!this.buffering || this.bufferingOverflow) return
+      this.bufferPcm(resampled.pcm)
     }
   }
 
   static async create(): Promise<RealtimeAudioCaptureSession> {
     if (!isRealtimeAudioCaptureAvailable()) throw new Error('Realtime audio capture is unavailable in this browser')
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS })
+    const stream = await acquireMicrophoneStream()
     try {
       const scope = globalThis as typeof globalThis & { webkitAudioContext?: typeof AudioContext }
       const Constructor = scope.AudioContext ?? scope.webkitAudioContext
@@ -78,9 +92,23 @@ export class RealtimeAudioCaptureSession implements RealtimeAudioCapture {
     return AudioLevelMonitor.fromStream(this.stream, onLevel)
   }
 
+  startBuffered(): void {
+    if (this.closed) throw new Error('Realtime audio capture is no longer active')
+    if (this.onChunk !== undefined) return
+    this.buffering = true
+  }
+
   start(onChunk: (audioBase64: string) => Promise<void>): void {
     if (this.closed) throw new Error('Realtime audio capture is no longer active')
+    const buffered = this.bufferedChunks
+    this.bufferedChunks = []
+    this.buffering = false
+    this.bufferingOverflow = false
     this.onChunk = onChunk
+    // Audio captured while the session was starting is flushed first so the
+    // remote stream receives every spoken word in capture order, including the
+    // leading audio that was recorded before the handshake completed.
+    for (const audioBase64 of buffered) this.enqueueDelivery(onChunk, audioBase64)
   }
 
   async stop(): Promise<void> {
@@ -110,6 +138,9 @@ export class RealtimeAudioCaptureSession implements RealtimeAudioCapture {
     if (this.closed) return
     this.closed = true
     this.onChunk = undefined
+    this.bufferedChunks = []
+    this.buffering = false
+    this.bufferingOverflow = false
     this.pendingPcm = new Uint8Array()
     this.processor.onaudioprocess = null
     this.source.disconnect()
@@ -117,6 +148,22 @@ export class RealtimeAudioCaptureSession implements RealtimeAudioCapture {
     this.sink.disconnect()
     stopTracks(this.stream)
     void this.context.close().catch(() => undefined)
+  }
+
+  private bufferPcm(pcm: Uint8Array): void {
+    const combined = new Uint8Array(this.pendingPcm.byteLength + pcm.byteLength)
+    combined.set(this.pendingPcm)
+    combined.set(pcm, this.pendingPcm.byteLength)
+    let offset = 0
+    while (combined.byteLength - offset >= REALTIME_AUDIO_CHUNK_BYTES) {
+      if (this.bufferedChunks.length >= MAX_BUFFERED_CHUNKS) {
+        this.bufferingOverflow = true
+        break
+      }
+      this.bufferedChunks.push(bytesToBase64(combined.subarray(offset, offset + REALTIME_AUDIO_CHUNK_BYTES)))
+      offset += REALTIME_AUDIO_CHUNK_BYTES
+    }
+    this.pendingPcm = combined.slice(offset)
   }
 
   private enqueuePcm(callback: ((audioBase64: string) => Promise<void>) | undefined, pcm: Uint8Array): void {
@@ -133,10 +180,14 @@ export class RealtimeAudioCaptureSession implements RealtimeAudioCapture {
   }
 
   private enqueueChunk(callback: (audioBase64: string) => Promise<void>, pcm: Uint8Array): void {
+    this.enqueueDelivery(callback, bytesToBase64(pcm))
+  }
+
+  private enqueueDelivery(callback: (audioBase64: string) => Promise<void>, audioBase64: string): void {
     const generation = this.deliveryGeneration
     this.queue = this.queue.then(async () => {
       if (generation !== this.deliveryGeneration || this.failure !== undefined) return
-      await deliverChunk(callback, bytesToBase64(pcm))
+      await deliverChunk(callback, audioBase64)
     }).catch((error) => {
       this.failure ??= error
     })

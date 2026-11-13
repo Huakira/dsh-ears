@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { isRealtimeAudioCaptureAvailable, RealtimeAudioCaptureSession } from '../src/client/realtime-audio-capture.js'
+import { warmMicrophone } from '../src/asr/media-recorder.js'
 
 class FakeTrack {
   readonly stop = vi.fn()
@@ -321,5 +322,154 @@ describe('RealtimeAudioCaptureSession', () => {
     await expect(session.stop()).rejects.toThrow('transport unavailable')
     expect(stream.track.stop).toHaveBeenCalledOnce()
     expect(context.close).toHaveBeenCalledOnce()
+  })
+
+  it('buffers leading audio and flushes it before live chunks when the session starts', async () => {
+    const stream = new FakeStream()
+    const context = new FakeAudioContext()
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn(async () => stream) } })
+    vi.stubGlobal('AudioContext', class extends FakeAudioContext {
+      constructor() {
+        super()
+        Object.assign(this, context)
+      }
+    })
+
+    const session = await RealtimeAudioCaptureSession.create()
+    session.startBuffered()
+    emitAudio(context, samplesOf(960, 0.25), 48_000)
+    emitAudio(context, samplesOf(960, 0.25), 48_000)
+    emitAudio(context, samplesOf(960, -0.25), 48_000)
+    emitAudio(context, samplesOf(960, -0.25), 48_000)
+
+    const chunks: string[] = []
+    session.start(async (chunk) => {
+      chunks.push(chunk)
+    })
+    emitAudio(context, samplesOf(960, 0.5), 48_000)
+    emitAudio(context, samplesOf(960, 0.5), 48_000)
+
+    await session.stop()
+
+    const decoded = chunks.map((chunk) => decodePcm16(chunk))
+    expect(decoded).toHaveLength(3)
+    expect(decoded[0]).toEqual(Array.from({ length: 640 }, () => 8_192))
+    expect(decoded[1]).toEqual(Array.from({ length: 640 }, () => -8_192))
+    expect(decoded[2]).toEqual(Array.from({ length: 640 }, () => 16_384))
+  })
+
+  it('carries the buffered partial chunk into the live stream without duplication', async () => {
+    const stream = new FakeStream()
+    const context = new FakeAudioContext()
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn(async () => stream) } })
+    vi.stubGlobal('AudioContext', class extends FakeAudioContext {
+      constructor() {
+        super()
+        Object.assign(this, context)
+      }
+    })
+
+    const session = await RealtimeAudioCaptureSession.create()
+    session.startBuffered()
+    emitAudio(context, samplesOf(960, 0.25), 48_000)
+    emitAudio(context, samplesOf(960, 0.25), 48_000)
+    emitAudio(context, samplesOf(960, 0.5), 48_000)
+    emitAudio(context, samplesOf(480, 0.5), 48_000)
+
+    const chunks: string[] = []
+    session.start(async (chunk) => {
+      chunks.push(chunk)
+    })
+    emitAudio(context, samplesOf(480, -0.5), 48_000)
+
+    await session.stop()
+
+    const decoded = chunks.map((chunk) => decodePcm16(chunk))
+    expect(decoded).toHaveLength(2)
+    expect(decoded[0]).toEqual(Array.from({ length: 640 }, () => 8_192))
+    expect(decoded[1]).toEqual([...Array.from({ length: 480 }, () => 16_384), ...Array.from({ length: 160 }, () => -16_384)])
+  })
+
+  it('still drops audio captured before buffering is armed', async () => {
+    const stream = new FakeStream()
+    const context = new FakeAudioContext()
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn(async () => stream) } })
+    vi.stubGlobal('AudioContext', class extends FakeAudioContext {
+      constructor() {
+        super()
+        Object.assign(this, context)
+      }
+    })
+
+    const session = await RealtimeAudioCaptureSession.create()
+    emitAudio(context, samplesOf(960, 0.25), 48_000)
+    emitAudio(context, samplesOf(960, 0.25), 48_000)
+    session.startBuffered()
+    emitAudio(context, samplesOf(960, -0.25), 48_000)
+    emitAudio(context, samplesOf(960, -0.25), 48_000)
+
+    const chunks: string[] = []
+    session.start(async (chunk) => {
+      chunks.push(chunk)
+    })
+
+    await session.stop()
+
+    const decoded = chunks.map((chunk) => decodePcm16(chunk))
+    expect(decoded).toHaveLength(1)
+    expect(decoded[0]).toEqual(Array.from({ length: 640 }, () => -8_192))
+  })
+
+  it('startBuffered is a no-op once the session started delivering live', async () => {
+    const stream = new FakeStream()
+    const context = new FakeAudioContext()
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn(async () => stream) } })
+    vi.stubGlobal('AudioContext', class extends FakeAudioContext {
+      constructor() {
+        super()
+        Object.assign(this, context)
+      }
+    })
+
+    const session = await RealtimeAudioCaptureSession.create()
+    const chunks: string[] = []
+    session.start(async (chunk) => {
+      chunks.push(chunk)
+    })
+    expect(() => session.startBuffered()).not.toThrow()
+    emitAudio(context, samplesOf(960, 0.25), 48_000)
+
+    await session.stop()
+
+    expect(chunks).toHaveLength(1)
+  })
+
+  it('reuses a warmed microphone stream instead of requesting a fresh one', async () => {
+    const stream = new FakeStream()
+    const context = new FakeAudioContext()
+    const getUserMedia = vi.fn(async () => stream)
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } })
+    vi.stubGlobal('AudioContext', class extends FakeAudioContext {
+      constructor() {
+        super()
+        Object.assign(this, context)
+      }
+    })
+    vi.stubGlobal('MediaRecorder', class {})
+
+    warmMicrophone()
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce())
+
+    const session = await RealtimeAudioCaptureSession.create()
+    const chunks: string[] = []
+    session.start(async (chunk) => {
+      chunks.push(chunk)
+    })
+    emitAudio(context, [1, -1])
+
+    await session.stop()
+
+    expect(getUserMedia).toHaveBeenCalledOnce()
+    expect(chunks).toHaveLength(1)
   })
 })
