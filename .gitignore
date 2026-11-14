@@ -11,3 +11,4 @@ lib/
 .npmrc
 *.pem
 *.key
+.corepack/

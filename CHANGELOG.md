@@ -2,6 +2,22 @@
 
 All notable changes to dsh-ears are recorded here.
 
+## [0.4.5] - 2026-11-13
+
+First fork release, published as `@huakira/dsh-ears`. It carries upstream `dsh-ears` 0.4.4 in full and adds one client-side improvement to the realtime cloud-recognition startup experience.
+
+### Changed
+
+- **Realtime capture now starts with the click and buffers while the remote session handshakes.** The user starts speaking the moment the mic button is clicked, but the realtime path acquired the microphone only after the remote session handshake completed, so the leading speech was never captured. Capture now runs in parallel with the handshake: `RealtimeAudioCaptureSession` gains `startBuffered()`, and `start()` flushes the buffered leading chunks into the delivery queue before any live chunk, preserving capture order across the handoff. Buffered audio is bounded (one minute of chunks) and cleared on abort so a stuck handshake cannot leak memory.
+- **Realtime capture reuses the prewarmed microphone.** The realtime path previously ignored the hover-prewarmed stream and requested a fresh one; it now acquires the microphone through the shared warmer (`acquireMicrophoneStream` in `media-recorder.ts`), so the recording state flips almost immediately after the click.
+- **The package is renamed to `@huakira/dsh-ears`** (fork packaging only). The bundle patch insert name follows the package name; the cordis plugin id stays `dsh-ears`.
+
+### Verification notes
+
+- `pnpm check`, `pnpm test` (615 tests), `pnpm build`, and `pnpm verify:package` pass.
+- The Host bundle is byte-identical to 0.4.4 (`lib/index.js`), so this is a client-only change that needs no Host restart.
+- A click-and-speak-immediately A/B check on the live web profile is the owed manual gate for this release.
+
 ## [0.4.4] - 2026-11-09
 
 Reported-defect fixes and a compatibility baseline refresh. This patch keeps the dsh `>=0.2.0-rc.1` floor and moves the compile, lockfile, and certification target to dsh `0.2.1-rc.4`. It fixes the composer tooltip repaint loop, a voice stop that could leave the recognition bar stuck, and the in-process native Whisper runtime that could abort the whole Host during GPU cleanup.

@@ -1,5 +1,5 @@
 # The dsh-ears bundle patch. The package entry is intentionally small in M1;
 # browser behavior is discovered through the package's dsh.client manifest.
 - insert:
-    - id: dsh-ears
-      name: dsh-ears
+    - id: "@huakira/dsh-ears"
+      name: "@huakira/dsh-ears"

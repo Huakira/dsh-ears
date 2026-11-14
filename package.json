@@ -1,13 +1,16 @@
 {
-  "name": "dsh-ears",
-  "version": "0.4.4",
-  "description": "Voice input plugin for DeepSeek Harness: microphone, transcription, and optional dsh LLM polishing into an editable draft",
+  "name": "@huakira/dsh-ears",
+  "version": "0.4.5",
+  "description": "Voice input plugin for DeepSeek Harness: microphone, transcription, and optional dsh LLM polishing into an editable draft. Fork of WizisCool/dsh-ears with instant-start realtime capture.",
   "icon": "./assets/icon.svg",
   "license": "MIT",
   "author": "JUNZE",
-  "homepage": "https://github.com/WizisCool/dsh-ears#readme",
+  "contributors": [
+    "Huakira <huakexie@proton.me>"
+  ],
+  "homepage": "https://github.com/Huakira/dsh-ears#readme",
   "bugs": {
-    "url": "https://github.com/WizisCool/dsh-ears/issues"
+    "url": "https://github.com/Huakira/dsh-ears/issues"
   },
   "keywords": [
     "dsh",
@@ -22,7 +25,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/WizisCool/dsh-ears.git"
+    "url": "git+https://github.com/Huakira/dsh-ears.git"
   },
   "type": "module",
   "engines": {
