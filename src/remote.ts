@@ -54,7 +54,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 }
 
 export const TYPERT_REMOTE: TypertRemoteContribution = {
-  package: 'dsh-ears',
+  package: '@huakirax/dsh-ears',
   descriptors: EARS_REMOTE_DESCRIPTORS
 }
 

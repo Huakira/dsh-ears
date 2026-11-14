@@ -25,5 +25,5 @@ export default defineConfig([
       dts: '.d.ts'
     })
   },
-  clientBundle('dsh-ears', 'src/client.ts')
+  clientBundle('@huakirax/dsh-ears', 'src/client.ts')
 ])

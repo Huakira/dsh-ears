@@ -1,7 +1,7 @@
 import { EARS_REMOTE_DESCRIPTORS } from './remote-definitions.js'
 
 export const TYPERT = {
-  package: 'dsh-ears',
+  package: '@huakirax/dsh-ears',
   face: 'host',
   schemas: [],
   invocations: EARS_REMOTE_DESCRIPTORS,
