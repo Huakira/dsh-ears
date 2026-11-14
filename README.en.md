@@ -11,7 +11,7 @@
   English
 </p>
 
-> **Personal fork notice**: this repository is a personal-use fork of [WizisCool/dsh-ears](https://github.com/WizisCool/dsh-ears) (npm package `@huakira/dsh-ears`). It improves the startup feel of realtime cloud recognition: audio capture starts immediately on click and buffers while the remote session handshakes, so words spoken during the handshake are no longer lost. Personal-use plugin, written with AI assistance, no maintenance promised; prefer the upstream version for daily use.
+> **Personal fork notice**: this repository is a personal-use fork of [WizisCool/dsh-ears](https://github.com/WizisCool/dsh-ears) (npm package `@huakirax/dsh-ears`). It improves the startup feel of realtime cloud recognition: audio capture starts immediately on click and buffers while the remote session handshakes, so words spoken during the handshake are no longer lost. Personal-use plugin, written with AI assistance, no maintenance promised; prefer the upstream version for daily use.
 
 <p align="center">
   <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/dsh-%3E%3D0.2.0--rc.1-1a73e8?style=flat-square&logo=deepseek&logoColor=white" alt="dsh >= 0.2.0-rc.1"></a>

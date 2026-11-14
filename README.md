@@ -11,7 +11,7 @@
   <a href="./README.en.md">English</a>
 </p>
 
-> **个人 fork 说明**：本仓库是 [WizisCool/dsh-ears](https://github.com/WizisCool/dsh-ears) 的个人自用分支（npm 包名 `@huakira/dsh-ears`），在此基础上改进了实时语音识别的启动体验：点击后立即开始采集并缓冲音频，与远程会话握手并行进行，避免握手期间开口说话丢失开头几个字。个人自用插件，代码由 AI 参与编写，不承诺维护；欢迎参考，日常使用请优先选择上游版本。
+> **个人 fork 说明**：本仓库是 [WizisCool/dsh-ears](https://github.com/WizisCool/dsh-ears) 的个人自用分支（npm 包名 `@huakirax/dsh-ears`），在此基础上改进了实时语音识别的启动体验：点击后立即开始采集并缓冲音频，与远程会话握手并行进行，避免握手期间开口说话丢失开头几个字。个人自用插件，代码由 AI 参与编写，不承诺维护；欢迎参考，日常使用请优先选择上游版本。
 
 <p align="center">
   <a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/dsh-%3E%3D0.2.0--rc.1-1a73e8?style=flat-square&logo=deepseek&logoColor=white" alt="dsh >= 0.2.0-rc.1"></a>
