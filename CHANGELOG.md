@@ -2,6 +2,12 @@
 
 All notable changes to dsh-ears are recorded here.
 
+## [0.4.6] - 2026-11-14
+
+### Fixed
+
+- Scoped package name is now used for the client `__ModuleLoader__.load` id and the TYPERT `package` fields, so the plugin activates under `@huakirax/dsh-ears`. The package contract check now expects 0.4.6.
+
 ## [0.4.5] - 2026-11-13
 
 First fork release, published as `@huakira/dsh-ears`. It carries upstream `dsh-ears` 0.4.4 in full and adds one client-side improvement to the realtime cloud-recognition startup experience.
